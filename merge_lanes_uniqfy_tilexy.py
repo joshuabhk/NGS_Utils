@@ -6,7 +6,11 @@ from random import randint
 from os.path import exists
 
 class FASTQ_lane_unifier :
-	def __init__( self, fn, outfn ) :
+	'''
+	This class unify the lanes to 1
+	so that the illumina w
+	'''
+	def __init__( self, fn, outfn, simple=False ) :
 		self.fn = fn
 		self.tilexys = set()
 		if exists(outfn) :
@@ -16,7 +20,10 @@ class FASTQ_lane_unifier :
 			outfp = open(outfn, 'w')
 
 		self.count = 0
-		self.run( outfp )
+		if simple :
+			self.run_simple( outfp )
+		else :
+			self.run( outfp )
 
 	def run( self, outfp ) :
 		for i, line in enumerate( open(self.fn) ) :
@@ -24,8 +31,17 @@ class FASTQ_lane_unifier :
 				outfp.write(self.uniquify_header(line))
 			else :
 				outfp.write(line)
-				
 
+	def run_simple( self, outfp ) :
+		'''
+		This is not the main method but wrote as a comparison purpose
+		'''
+		for i, line in enumerate( open(self.fn) ) :
+			if i%4 == 0 :
+				outfp.write(self.uniquify_header_simple(line))
+			else :
+				outfp.write(line)
+				
 	def uniquify_header( self, fastq_header, lane_number='1' ) :
 		header1, header2 = fastq_header.split()
 		l = header1.split(":")
@@ -53,6 +69,14 @@ class FASTQ_lane_unifier :
 
 		return '%s %s\n'%(header1, header2)
 
+
+	def uniquify_header_simple( self, fastq_header, lane_number='1' ) :
+		header1, header2 = fastq_header.split()
+		l = header1.split(":")
+		lane,tile,x,y = l[3], l[4], l[5],l[6]
+		l[3] = lane_number
+		header1 = ':'.join(l)
+		return '%s %s\n'%(header1, header2)
 
 if __name__=='__main__' :
 	try :
