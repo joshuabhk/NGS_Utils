@@ -1,0 +1,122 @@
+#!/bin/bash
+
+module load python
+module load bedtools
+
+python - $@ << END
+#This is a CLI written for Vlad and Lulu
+#to extract sequence from a given genomic interval
+
+#Currently it assume to 'load module python' in helix/biowulf
+#which is python 2.7.
+
+#to load the print function for compatibility to 3.5
+from __future__ import print_function
+from tempfile import NamedTemporaryFile
+import sys, os
+from getopt import getopt
+
+usage = """
+Genome sequence extractor from the genomic location.
+
+Usage:
+%s [-h|-g] genomic_location 
+
+Options:
+-h : Print this help message.
+-g <genome> : Spcify genome name. [mm9, mm10, hg18, h19]
+              Default is "mm10".
+
+""" % sys.argv[0]
+
+#helix/biowulf setting
+fasta_files = {
+	'mm10':'/fdb/igenomes/Mus_musculus/UCSC/mm10/Sequence/WholeGenomeFasta/genome.fa', 
+	'hg19':'/fdb/igenomes/Homo_sapiens/UCSC/hg19/Sequence/WholeGenomeFasta/genome.fa', 
+	'hg18':'/fdb/igenomes/Homo_sapiens/UCSC/hg18/Sequence/WholeGenomeFasta/genome.fa',
+	'mm9':'/fdb/igenomes/Mus_musculus/UCSC/mm9new/Sequence/WholeGenomeFasta/genome.fa',
+	'hg38':'/fdb/igenomes/Homo_sapiens/UCSC/hg38/Sequence/WholeGenomeFasta/genome.fa'
+}
+
+def parse_interval_string( interval ) :
+	#This function assumes one based closed region definition!
+	chrom, region = interval.split(':')
+	start, end = region.split('-')
+
+	start, end = int(start), int(end)
+	start = start - 1 #conver to zero baed
+
+	return( chrom, start, end )
+
+def dict2size( dictfn ) :
+	#helix dict file (which is a SAM header) 
+	#conversion to a real python dictionary for the chromosome
+	size = {}
+	for line in open(dictfn):
+		if line.startswith( "@SQ" ) :
+			chrom, length = line.split()[1:3]
+			assert chrom.startswith("SN:") and length.startswith( "LN:" ) 
+			chrom = chrom.replace( "SN:", "" )
+			length = int(length.replace( "LN:", "" ))
+			size[chrom] = length
+		else :
+			print( line )
+	return size
+
+#reverse complementary sequence
+import string
+acgt = string.maketrans("ACGTacgt", "TGCAtgca")
+def rc( dna ):
+	return dna.translate(acgt)[::-1]
+
+if __name__ == '__main__' :
+	genome = 'mm10'
+	strand = '+'
+	options, args = getopt(sys.argv[1:], 'g:s:f:h')
+
+	#print( options )
+	#print( args )
+
+	if not args :
+		print( usage )
+		sys.exit(-1)
+
+	allowed_strands = {'-','+'}
+
+
+	for opt,val in options :
+		if opt == '-s' :
+			if val in allowed_strands:
+				strand = val
+			else :
+				print('Invalid strand value:', val)
+				sys.exit(-1)
+		elif opt == '-g' :
+			genome = val
+			if not genome in fasta_files :
+				print('Invalid genome value:', val)
+				sys.exit(-1)
+				
+		elif opt == '-h' :
+			print( usage )
+			sys.exit()
+
+	#print( options, interval_string_parse(args[0]) )
+	if genome in fasta_files :
+		fasta = fasta_files[genome]
+		chrom, start, end = parse_interval_string(args[0])
+		#from pybedtools import BedTool
+		#interval = BedTool( "%s\t%s\t%s\t%s"%(chrom, start,end,strand), from_string=True )
+
+		bed = NamedTemporaryFile( suffix=".bed" )
+		print( chrom, start, end, sep="\t", file=bed )
+		bed.flush()
+
+		fo = NamedTemporaryFile( suffix=".fa") #holder
+		os.system( "bedtools getfasta -fi %s -fo %s -bed %s" %(fasta, fo.name, bed.name))
+
+		print( open( fo.name).read() )
+	else :
+		print( 'Not supported genome %s' % genome )
+
+END
